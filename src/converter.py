@@ -1,6 +1,8 @@
+import re
 from textnode import TextNode
 from leafnode import LeafNode
 from texttype import TextType
+from blocktype import BlockType
 
 def text_node_to_html_node(text_node: TextNode):		
 	if text_node.text_type == TextType.TEXT:
@@ -54,3 +56,91 @@ def split_nodes_delimiter(old_nodes, delimiter, text_type):
 			new_nodes.append(node)
 	return new_nodes
 
+def extract_markdown_images(text):
+	#print(text)
+	matchs = re.findall(r"!\[([^\[\]]*?)\]\(([^\(\)]*?)\)", text)
+	return matchs
+
+def extract_markdown_links(text):
+	matchs = re.findall(r"(?<!!)\[([^\[\]]*?)\]\(([^\(\)]*?)\)", text)
+	return matchs
+
+def split_nodes_image(old_nodes):
+	new_nodes = []
+	for node in old_nodes:
+		if node.text_type == TextType.TEXT:
+			node_txt = node.text
+			tmp_lst = extract_markdown_images(node_txt)
+			for item in tmp_lst:
+				extracted_lst = node_txt.split(f"![{item[0]}]({item[1]})",1)	
+				node_txt = extracted_lst[len(extracted_lst)-1]
+				if extracted_lst[0] != "":
+					new_nodes.append(TextNode(extracted_lst[0], TextType.TEXT))
+				new_nodes.append(TextNode(item[0], TextType.IMAGE, item[1]))
+			if node_txt != "":
+				new_nodes.append(TextNode(node_txt, TextType.TEXT))
+		else:
+			new_nodes.append(node)
+	return new_nodes
+
+def split_nodes_link(old_nodes):
+	new_nodes = []
+	for node in old_nodes:
+		if node.text_type == TextType.TEXT:
+			node_txt = node.text
+			tmp_lst = extract_markdown_links(node_txt)
+			for item in tmp_lst:
+				extracted_lst = node_txt.split(f"[{item[0]}]({item[1]})",1)
+				node_txt = extracted_lst[len(extracted_lst)-1]
+				if extracted_lst[0] != "":
+					new_nodes.append(TextNode(extracted_lst[0], TextType.TEXT))
+				new_nodes.append(TextNode(item[0], TextType.LINK, item[1]))
+			if node_txt != "":
+				new_nodes.append(TextNode(node_txt, TextType.TEXT))
+		else:
+			new_nodes.append(node)
+	return new_nodes
+
+def text_to_textnodes(text):
+	if isinstance(text, TextNode):
+		lst = [text]
+	else:
+		lst = text
+	lst = split_nodes_link(lst)
+	lst = split_nodes_image(lst)
+	
+	
+	lst = split_nodes_delimiter(lst, "**", TextType.BOLD)
+	lst = split_nodes_delimiter(lst, "*", TextType.ITALIC)
+	lst = split_nodes_delimiter(lst, "`", TextType.CODE)
+	return lst
+
+
+def markdown_to_blocks(markdown):
+	return [block.strip() for block in markdown.split("\n\n") if block.strip()]
+
+def is_valid_ordered_list(block):
+	lines = block.split("\n")
+	counter = 1
+	for line in lines:
+		line = line.strip()
+		if not line.startswith(f"{counter}. "):
+			return False
+		counter += 1
+	return True
+
+
+def block_to_block_type(block):
+	lines = []
+	if re.match(r"^\#{1,6}\s\S+", block):
+		return BlockType.HEADING
+	elif block.startswith("```") and block.endswith("```") and len(block) > 6:
+		return BlockType.CODE
+	elif len(re.findall(r"\>\s\S+", block)) == len(block.split("\n")):
+		return BlockType.QUOTE
+	elif all(line.strip().startswith(("* ", "- ")) for line in block.split("\n") if line.strip()):
+		return BlockType.UNORDERED_LIST
+	elif is_valid_ordered_list(block):
+		return BlockType.ORDERED_LIST
+	return BlockType.PARAGRAPH
+	
