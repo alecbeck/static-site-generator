@@ -1,4 +1,5 @@
 import re
+from htmlnode import HTMLNode
 from textnode import TextNode
 from leafnode import LeafNode
 from texttype import TextType
@@ -104,6 +105,8 @@ def split_nodes_link(old_nodes):
 def text_to_textnodes(text):
 	if isinstance(text, TextNode):
 		lst = [text]
+	elif isinstance(text, str):
+		lst = [TextNode(text=text, text_type=TextType.TEXT)]
 	else:
 		lst = text
 	lst = split_nodes_link(lst)
@@ -129,7 +132,6 @@ def is_valid_ordered_list(block):
 		counter += 1
 	return True
 
-
 def block_to_block_type(block):
 	lines = []
 	if re.match(r"^\#{1,6}\s\S+", block):
@@ -138,9 +140,114 @@ def block_to_block_type(block):
 		return BlockType.CODE
 	elif len(re.findall(r"\>\s\S+", block)) == len(block.split("\n")):
 		return BlockType.QUOTE
-	elif all(line.strip().startswith(("* ", "- ")) for line in block.split("\n") if line.strip()):
+	elif all(line.strip().startswith(("* ", "- ", "+ ")) for line in block.split("\n") if line.strip()):
 		return BlockType.UNORDERED_LIST
 	elif is_valid_ordered_list(block):
 		return BlockType.ORDERED_LIST
 	return BlockType.PARAGRAPH
+
+def get_header_tag(block):
+	start = block[:5]
+	count = start.count("#")
+	if count == 1:
+		return "h1"
+	elif count == 2:
+		return "h2"
+	elif count == 3:
+		return "h3"
+	elif count == 4:
+		return "h4"
+	elif count == 5:
+		return "h5"
+	elif count == 6:
+		return "h6"
+
+def remove_block_markdown(text, block_type):
+	new_text = ""
+	if block_type == BlockType.CODE:
+		text = text.replace("```", "")
+		#text = text.replace("```", "")
+		for line in text.split("\n"):
+			new_text += line
+		return new_text
+	elif block_type == BlockType.HEADING:
+		markdown = re.findall(r"^#{1,6}\s", text)
+		return text.replace(markdown[0], "")
+	elif block_type == BlockType.QUOTE:
+		for line in text.split("\n"):
+			new_text += line[2:] + "\n"# this removed the '< ' and add a new line back
+		return new_text
+	elif block_type == BlockType.UNORDERED_LIST:
+		for line in text.split("\n"):
+			new_text += line[2:].strip() + "\n" #this removes the ul markdown and addes a new line back
+		return new_text.strip()
+	elif block_type == BlockType.ORDERED_LIST:
+		counter = 1
+		for line in text.split("\n"):
+			new_text += line.replace(f"{counter}. ", "").strip() + "\n"
+			counter +=  1
+		return new_text
+	return text.strip()
+
+def build_html_node(text, block_type):
+	no_markdown_text = remove_block_markdown(text, block_type)
+	children = []
+	sub_children = []
+	#text_node_lst = text_to_textnodes(TextNode(text=text, text_type=TextType.TEXT))
+	#return text_node_lst
+	match block_type:
+		case BlockType.HEADING:
+			for item in text_to_textnodes(text=no_markdown_text):
+				if item.text_type == TextType.TEXT:
+					sub_children.append(item)
+				else:
+					sub_children.append(text_node_to_html_node(item))
+			children.append(HTMLNode(tag=get_header_tag(text), value=None, children=sub_children))
+		case BlockType.QUOTE:
+			for item in text_to_textnodes(text=no_markdown_text):
+				if item.text_type == TextType.TEXT:
+					sub_children.append(item)
+				else:
+					sub_children.append(text_node_to_html_node(item))
+			children.append(HTMLNode(tag="blockquote", value=None, children=sub_children))
+		case BlockType.CODE:
+			for item in text_to_textnodes(text=no_markdown_text):
+				print(item)
+				if item.text_type == TextType.TEXT:
+					sub_children.append(item)
+				else:
+					sub_children.append(text_node_to_html_node(item))
+			children.append(HTMLNode(tag="pre", value=None, children=HTMLNode(tag="code", value=None, children=sub_children)))
+		case BlockType.UNORDERED_LIST:
+			for li in no_markdown_text.split("\n"):
+				li_list = []
+				for item in text_to_textnodes(text=li):
+					if item.text_type == TextType.TEXT:
+						li_list.append(item)
+					else:
+						li_list.append(text_node_to_html_node(item))
+				sub_children.append(HTMLNode(tag="li", value=None, children=li_list))
+			children.append(HTMLNode(tag="ul", value=None, children=sub_children))
+		case BlockType.ORDERED_LIST:
+			for li in no_markdown_text.split("\n"):
+				li_list = []
+				for item in text_to_textnodes(li):
+					if item.text_type ==  TextType.TEXT:
+						li_list.append(item)
+					else:
+						li_list.append(text_node_to_html_node(item))
+				sub_children.append(HTMLNode(tag="li", value=None, children=li_list))
+			children.append(HTMLNode(tag="ol", value=None, children=sub_children))
+	return HTMLNode(tag="div",value=None, children=children)
+
+	
+
+def markdown_to_html_node(markdown):	
+	blocks_list = markdown_to_blocks(markdown)
+	children_nodes = []
+	for block in blocks_list:
+		children_nodes.append(build_html_node(block, block_to_block_type(block)))#this should return a div for each block
+
+
+	return HTMLNode("div", value=None, children=children_nodes)
 	
