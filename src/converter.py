@@ -58,7 +58,6 @@ def split_nodes_delimiter(old_nodes, delimiter, text_type):
 	return new_nodes
 
 def extract_markdown_images(text):
-	#print(text)
 	matchs = re.findall(r"!\[([^\[\]]*?)\]\(([^\(\)]*?)\)", text)
 	return matchs
 
@@ -112,10 +111,10 @@ def text_to_textnodes(text):
 	lst = split_nodes_link(lst)
 	lst = split_nodes_image(lst)
 	
-	
 	lst = split_nodes_delimiter(lst, "**", TextType.BOLD)
 	lst = split_nodes_delimiter(lst, "*", TextType.ITALIC)
 	lst = split_nodes_delimiter(lst, "`", TextType.CODE)
+
 	return lst
 
 
@@ -133,7 +132,6 @@ def is_valid_ordered_list(block):
 	return True
 
 def block_to_block_type(block):
-	lines = []
 	if re.match(r"^\#{1,6}\s\S+", block):
 		return BlockType.HEADING
 	elif block.startswith("```") and block.endswith("```") and len(block) > 6:
@@ -198,46 +196,35 @@ def build_html_node(text, block_type):
 	match block_type:
 		case BlockType.HEADING:
 			for item in text_to_textnodes(text=no_markdown_text):
-				if item.text_type == TextType.TEXT:
-					sub_children.append(item)
-				else:
-					sub_children.append(text_node_to_html_node(item))
+				sub_children.append(item)
 			children.append(HTMLNode(tag=get_header_tag(text), value=None, children=sub_children))
 		case BlockType.QUOTE:
 			for item in text_to_textnodes(text=no_markdown_text):
-				if item.text_type == TextType.TEXT:
-					sub_children.append(item)
-				else:
-					sub_children.append(text_node_to_html_node(item))
+				sub_children.append(item)
 			children.append(HTMLNode(tag="blockquote", value=None, children=sub_children))
 		case BlockType.CODE:
 			for item in text_to_textnodes(text=no_markdown_text):
-				print(item)
 				if item.text_type == TextType.TEXT:
 					sub_children.append(item)
 				else:
-					sub_children.append(text_node_to_html_node(item))
-			children.append(HTMLNode(tag="pre", value=None, children=HTMLNode(tag="code", value=None, children=sub_children)))
+					sub_children.append(item)
+			children.append(HTMLNode(tag="pre", value=None, children=[HTMLNode(tag="code", value=None, children=sub_children)]))
 		case BlockType.UNORDERED_LIST:
 			for li in no_markdown_text.split("\n"):
 				li_list = []
 				for item in text_to_textnodes(text=li):
-					if item.text_type == TextType.TEXT:
-						li_list.append(item)
-					else:
-						li_list.append(text_node_to_html_node(item))
+					li_list.append(item)
 				sub_children.append(HTMLNode(tag="li", value=None, children=li_list))
 			children.append(HTMLNode(tag="ul", value=None, children=sub_children))
 		case BlockType.ORDERED_LIST:
 			for li in no_markdown_text.split("\n"):
 				li_list = []
 				for item in text_to_textnodes(li):
-					if item.text_type ==  TextType.TEXT:
-						li_list.append(item)
-					else:
-						li_list.append(text_node_to_html_node(item))
+					li_list.append(item)
 				sub_children.append(HTMLNode(tag="li", value=None, children=li_list))
 			children.append(HTMLNode(tag="ol", value=None, children=sub_children))
+		case BlockType.PARAGRAPH:
+			children.append(HTMLNode(tag="p", value=None, children=text_to_textnodes(no_markdown_text)))
 	return HTMLNode(tag="div",value=None, children=children)
 
 	
@@ -251,3 +238,34 @@ def markdown_to_html_node(markdown):
 
 	return HTMLNode("div", value=None, children=children_nodes)
 	
+def extract_all_html_text(node_list):
+	output = ""
+	if isinstance(node_list, list):
+		for node in node_list:
+			if isinstance(node, HTMLNode):
+				output += f"<{node.tag}>"
+				if isinstance(node.children, list):
+					output += extract_all_html_text(node.children)
+				output += f"</{node.tag}>"
+			elif isinstance(node, TextNode):
+				node.text = node.text.strip()
+				l_node = text_node_to_html_node(node)
+				output += l_node.to_html()
+	elif isinstance(node_list, HTMLNode):
+		if isinstance(node_list.children, list):
+			output += extract_all_html_text(node_list.children)
+	return output
+			
+		
+
+					
+					
+
+
+def extract_title(markdown):
+	blocks = markdown_to_blocks(markdown)
+	for block in blocks:
+		if block_to_block_type(block) == BlockType.HEADING:
+			if get_header_tag(block) == "h1":
+				return block.replace("#", "").strip()
+	raise Exception("No Title to extract from H1")

@@ -134,6 +134,15 @@ And More"""
 		assert block_to_block_type("> text\n> more text") == BlockType.QUOTE
 		assert block_to_block_type("* hello\n* more\n- asdfasfdsa") == BlockType.UNORDERED_LIST
 		assert block_to_block_type("1. hello\n2. more\n3. asdfasfdsa") == BlockType.ORDERED_LIST
+	
+	def test_extract_title_good(self):
+		markdown = """## this is not a title
+
+### Still not a title
+
+# Title here           """
+
+		self.assertEqual(extract_title(markdown), "Title here")
 
 
 if __name__ == "__main__":
